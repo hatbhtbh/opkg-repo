@@ -1,0 +1,77 @@
+name: Build PassWall to Repo
+
+on:
+  workflow_dispatch: # 支持手动点击按钮一键触发更新
+  schedule:
+    - cron: '0 18 * * 0' # 可选：每周日凌晨（UTC 18:00）自动检查编译一次
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout opkg-repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Install Build Dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y build-essential libncurses5-dev libncursesw5-dev \
+            zlib1g-dev gawk git gettext libssl-dev xsltproc wget unzip python3
+
+      - name: Download & Prepare OpenWrt SDK
+        run: |
+          # 下载匹配 x86_64 的 SDK（此处以官方/LEDE通用SDK为例）
+          SDK_URL="https://downloads.openwrt.org/releases/23.05.4/targets/x86/64/openwrt-sdk-23.05.4-x86-64_gcc-12.3.0_musl.Linux-x86_64.tar.zst"
+          wget -qO sdk.tar.zst "$SDK_URL"
+          tar -I zstd -xf sdk.tar.zst
+          mv openwrt-sdk-* sdk
+          rm -f sdk.tar.zst
+
+      - name: Clone PassWall Sources
+        run: |
+          cd sdk/package
+          # 克隆 passwall 源码及常用依赖包
+          git clone --depth 1 https://github.com/xiaorouji/openwrt-passwall-packages.git pw-dep
+          git clone --depth 1 https://github.com/xiaorouji/openwrt-passwall.git luci-app-passwall
+
+      - name: Compile PassWall Packages
+        run: |
+          cd sdk
+          # 更新并安装 feeds
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+          
+          # 选择编译 passwall
+          make defconfig
+          make package/luci-app-passwall/compile -j$(nproc) V=s
+
+      - name: Update Repo Packages
+        run: |
+          # 拷贝编译好的 ipk 到仓库对应目录
+          mkdir -p luci packages base
+          find sdk/bin/packages/x86_64/ -name "*.ipk" -exec cp {} packages/ \;
+          find sdk/bin/packages/x86_64/ -name "luci-app-passwall*.ipk" -exec cp {} luci/ \;
+
+          # 重新生成索引 Packages.gz
+          cd sdk
+          ./scripts/ipkg-make-index.sh ../packages > ../packages/Packages
+          gzip -9nc ../packages/Packages > ../packages/Packages.gz
+
+          ./scripts/ipkg-make-index.sh ../luci > ../luci/Packages
+          gzip -9nc ../luci/Packages > ../luci/Packages.gz
+          cd ..
+
+          # 清理 SDK 临时文件夹
+          rm -rf sdk
+
+      - name: Commit and Push to Repo
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          touch .nojekyll
+          git add -A
+          git diff --staged --quiet || git commit -m "Auto build & update PassWall [$(date '+%Y-%m-%d %H:%M:%S')]"
+          git push origin main
