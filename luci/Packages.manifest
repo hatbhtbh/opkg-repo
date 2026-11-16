@@ -83,10 +83,10 @@ SourceName: luci-app-kodexplorer
 Section: luci
 SourceDateEpoch: 1788327014
 Architecture: all
-Installed-Size: 7989
+Installed-Size: 8761
 Filename: luci-app-kodexplorer_20220109-1_all.ipk
-Size: 8933
-SHA256sum: 0de84ede87ea1e40d5cf29f65228b7c0683223c52a843c1baaf0ea68e72a1946
+Size: 9651
+SHA256sum: 3f894f0000132bf9e32659a8d930cdcc2f0e2e1bf512577804323637870820ac
 Description:  LuCI support for KodExplorer
 
 Package: luci-app-openclash
